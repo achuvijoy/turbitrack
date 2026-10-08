@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turbidity Cloud Monitor</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #151d30;
+      --border: #24304f;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --danger: #ef4444;
+      --success: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 24px 16px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 20px; text-align: center; }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-title { font-size: 13px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+    .card-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      width: fit-content;
+    }
+    .badge-open { background: rgba(34, 197, 94, 0.15); color: var(--success); border: 1px solid var(--success); }
+    .badge-closed { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
+    .badge-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+    .badge-normal { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid var(--success); }
+
+    .table-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { color: var(--muted); text-transform: uppercase; font-size: 12px; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Turbidity & Valve Cloud Monitor</h1>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">Live Turbidity</div>
+        <div class="card-value" id="valPercent">-- %</div>
+        <div style="font-size: 12px; color: var(--muted);" id="valNtu">NTU: -- | -- V</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Water State</div>
+        <div id="badgeAlert" class="badge badge-normal">NORMAL</div>
+        <div style="font-size: 12px; color: var(--muted);" id="valTimestamp">Updated: --</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Main Valve</div>
+        <div id="badgeMain" class="badge badge-open">--</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Drain Valve</div>
+        <div id="badgeDrain" class="badge badge-closed">--</div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2 style="font-size: 16px; margin-bottom: 12px;">Triggered Breach Logs</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Turbidity (%)</th>
+            <th>NTU</th>
+            <th>Main Valve</th>
+            <th>Drain Valve</th>
+          </tr>
+        </thead>
+        <tbody id="logsTableBody">
+          <tr><td colspan="5" style="color: var(--muted); text-align: center;">Waiting for logs...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Replace with your Firebase configuration
+    const firebaseConfig = {
+      databaseURL: "https://YOUR_FIREBASE_HOST.firebaseio.com"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // 1. Real-time Live Telemetry Listener
+    db.ref("live").on("value", (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      document.getElementById("valPercent").innerText = `${data.turbidity_percent}%`;
+      document.getElementById("valNtu").innerText = `NTU: ${data.ntu} | ${data.voltage} V`;
+      document.getElementById("valTimestamp").innerText = `Updated: ${data.last_updated || '--'}`;
+
+      // Alert Badge
+      const alertEl = document.getElementById("badgeAlert");
+      if (data.threshold_exceeded) {
+        alertEl.innerText = "EXCEEDED";
+        alertEl.className = "badge badge-danger";
+      } else {
+        alertEl.innerText = "NORMAL";
+        alertEl.className = "badge badge-normal";
+      }
+
+      // Valve Badges
+      const mainEl = document.getElementById("badgeMain");
+      mainEl.innerText = data.main_valve;
+      mainEl.className = `badge ${data.main_valve === 'OPEN' ? 'badge-open' : 'badge-closed'}`;
+
+      const drainEl = document.getElementById("badgeDrain");
+      drainEl.innerText = data.drain_valve;
+      drainEl.className = `badge ${data.drain_valve === 'OPEN' ? 'badge-open' : 'badge-closed'}`;
+    });
+
+    // 2. Threshold Breach Incident Logs Listener
+    db.ref("logs").limitToLast(25).on("value", (snapshot) => {
+      const logs = snapshot.val();
+      const tbody = document.getElementById("logsTableBody");
+      tbody.innerHTML = "";
+
+      if (!logs) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color: var(--muted); text-align: center;">No breach incidents logged yet.</td></tr>`;
+        return;
+      }
+
+      const rows = Object.values(logs).reverse();
+      rows.forEach((log) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${log.time}</td>
+          <td style="color: var(--danger); font-weight: 600;">${log.turbidity_percent}%</td>
+          <td>${log.ntu}</td>
+          <td>${log.main_valve}</td>
+          <td>${log.drain_valve}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+  </script>
+</body>
+</html>
